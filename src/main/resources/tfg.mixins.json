@@ -129,6 +129,7 @@
         "common.gtceu.tools.ToolHelperMixin",
         "common.gtceu.tools.ToolRecipeHandlerMixin",
         "common.gtutilities.UtilToolRecipeHelperMixin",
+        "common.tfc.IngotPileBlockEntityMixin",
         "common.hang_glider.GliderItemMixin",
         "common.immersive_aircraft.BambooHopperEntityMixin",
         "common.kubejs.MiscForgeHelperMixin",
