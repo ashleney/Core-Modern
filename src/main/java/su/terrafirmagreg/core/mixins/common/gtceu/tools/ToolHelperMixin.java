@@ -6,7 +6,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import com.gregtechceu.gtceu.api.item.IGTTool;
 import com.gregtechceu.gtceu.api.item.tool.ToolHelper;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.llamalad7.mixinextras.sugar.Local;
 
 import net.dries007.tfc.common.blocks.CharcoalPileBlock;
@@ -47,5 +49,15 @@ public abstract class ToolHelperMixin {
         if (ForgingBonus.applyLikeUnbreaking(stack, random)) {
             info.cancel();
         }
+    }
+
+    @Redirect(method = "damageItem(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/LivingEntity;I)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/RandomSource;nextInt(I)I"), remap = true)
+    private static int tfg$damageItem$treeFellingPrefersCharge(RandomSource random, int bound, ItemStack stack,
+            LivingEntity user, int damage) {
+        if (stack.getItem() instanceof IGTTool tool && tool.isElectric() && ToolHelper.hasBehaviorsTag(stack) &&
+                ToolHelper.getBehaviorsTag(stack).getBoolean(ToolHelper.TREE_FELLING_KEY)) {
+            return ConfigHolder.INSTANCE.tools.rngDamageElectricTools;
+        }
+        return random.nextInt(bound);
     }
 }
