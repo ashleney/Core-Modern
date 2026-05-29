@@ -19,12 +19,12 @@ import net.dries007.tfc.world.chunkdata.ChunkData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
-import net.minecraft.core.SectionPos;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.ai.village.poi.PoiManager;
 import net.minecraft.world.entity.ai.village.poi.PoiRecord;
-import net.minecraft.world.entity.ai.village.poi.PoiSection;
 import net.minecraft.world.entity.ai.village.poi.PoiType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
@@ -38,8 +38,6 @@ import net.minecraft.world.level.material.Fluids;
 
 import su.terrafirmagreg.core.common.data.TFGPoiTypes;
 import su.terrafirmagreg.core.config.TFGConfig;
-import su.terrafirmagreg.core.mixins.common.minecraft.PoiSectionAccessor;
-import su.terrafirmagreg.core.mixins.common.minecraft.SectionStorageAccessor;
 import su.terrafirmagreg.core.world.IChunkData;
 
 /*
@@ -51,6 +49,7 @@ port of TFC's 1.21 new snow melting logic
 */
 public class SnowCorrection {
     private static final Holder<PoiType> CLIMATE = TFGPoiTypes.CLIMATE.getHolder().orElseThrow();
+    private static final ResourceKey<PoiType> CLIMATE_KEY = CLIMATE.unwrapKey().orElseThrow();
     private static final int TICKS_PER_SNOW_ACCUMULATION = 80;
     private static final int TICKS_PER_SNOW_MELT_PER_SNOW_ACCUMULATION = 3;
     private static final int TICKS_PER_SNOW_MELT = TICKS_PER_SNOW_ACCUMULATION * TICKS_PER_SNOW_MELT_PER_SNOW_ACCUMULATION;
@@ -61,10 +60,13 @@ public class SnowCorrection {
     private static final int MAX_UPDATES_PER_TICK = TFGConfig.SERVER.snowMaxAccumulationOnUpdate.get();
 
     public static void onTickChunk(ServerLevel level, ChunkAccess chunk) {
+        if (!(chunk instanceof LevelChunk levelChunk)) {
+            return;
+        }
+
         final WorldTracker tracker = WorldTracker.get(level);
         final ClimateModel model = tracker.getClimateModel();
         final ChunkPos chunkPos = chunk.getPos();
-        final LevelChunk levelChunk = level.getChunk(chunkPos.x, chunkPos.z);
         final ChunkData data = ChunkData.get(levelChunk);
         final long currentTick = Calendars.SERVER.getTicks();
         final long currentCalendarTick = Calendars.SERVER.getCalendarTicks();
@@ -125,58 +127,36 @@ public class SnowCorrection {
         return Math.random() - Mth.clampedMap(rainfall, 0f, 500f, 1, 0) > 0;
     }
 
-    @SuppressWarnings("unchecked")
-    private static SectionStorageAccessor<PoiSection> getPoiManager(ServerLevel level) {
-        return (SectionStorageAccessor<PoiSection>) level.getPoiManager();
-    }
-
-    @Nullable
-    private static Set<PoiRecord> getPoiRecords(SectionStorageAccessor<PoiSection> poi, ChunkPos chunkPos, int sectionY) {
-        final long sectionKey = SectionPos.asLong(chunkPos.x, sectionY, chunkPos.z);
-        final Optional<PoiSection> section = poi.invoke$getOrLoad(sectionKey);
-        return section.isPresent() ? ((PoiSectionAccessor) section.get()).accessor$byType().get(CLIMATE) : null;
-    }
-
     private static int countExistingSnowInChunk(ServerLevel level, ChunkPos chunkPos) {
-        int total = 0;
-
-        final SectionStorageAccessor<PoiSection> poi = getPoiManager(level);
-        for (int sectionY = level.getMaxSection() - 1; sectionY >= level.getMinSection(); sectionY--) {
-            final Set<PoiRecord> objects = getPoiRecords(poi, chunkPos, sectionY);
-            if (objects != null) {
-                total += objects.size();
-            }
-        }
-        return total;
+        final PoiManager poi = level.getPoiManager();
+        return (int) poi.getInChunk(holder -> holder.unwrapKey().map(CLIMATE_KEY::equals).orElse(false), chunkPos, PoiManager.Occupancy.ANY).count();
     }
 
     private static void handleSnowMelting(ServerLevel level, ChunkPos chunkPos, int amount) {
         // PoiManager doesn't have the methods we need, and they look pretty slow. We just need a randomly sampled poi from this chunk, and we
         // don't really care about section. So this is likely more efficient.
-        final SectionStorageAccessor<PoiSection> poi = getPoiManager(level);
-        for (int sectionY = level.getMinSection(); sectionY < level.getMaxSection(); sectionY++) {
-            final Set<PoiRecord> entries = getPoiRecords(poi, chunkPos, sectionY);
-            if (entries != null && !entries.isEmpty()) {
-                // Handle two cases:
-                // - removing all (amount >= entries.size())
-                // - removing some (amount < entries.size())
-                final List<PoiRecord> copyOfEntries = new ArrayList<>(entries); // Must be a mutable view, since we swap to random sample later
-                if (amount >= copyOfEntries.size()) {
-                    for (PoiRecord entry : copyOfEntries) {
-                        removeSnowAt(level, entry.getPos());
-                    }
-                    amount -= copyOfEntries.size();
-                } else {
-                    final List<PoiRecord> sampleOfEntries = Helpers.uniqueRandomSample(copyOfEntries, amount, level.random);
-                    for (PoiRecord entry : sampleOfEntries) {
-                        removeSnowAt(level, entry.getPos());
-                    }
-                    amount -= sampleOfEntries.size();
+        final PoiManager poi = level.getPoiManager();
+        final List<PoiRecord> entries = poi.getInChunk(holder -> holder.unwrapKey().map(CLIMATE_KEY::equals).orElse(false), chunkPos, PoiManager.Occupancy.ANY).toList();
+        if (!entries.isEmpty()) {
+            // Handle two cases:
+            // - removing all (amount >= entries.size())
+            // - removing some (amount < entries.size())
+            final List<PoiRecord> copyOfEntries = new ArrayList<>(entries); // Must be a mutable view, since we swap to random sample later
+            if (amount >= copyOfEntries.size()) {
+                for (PoiRecord entry : copyOfEntries) {
+                    removeSnowAt(level, entry.getPos());
                 }
+                amount -= copyOfEntries.size();
+            } else {
+                final List<PoiRecord> sampleOfEntries = Helpers.uniqueRandomSample(copyOfEntries, amount, level.random);
+                for (PoiRecord entry : sampleOfEntries) {
+                    removeSnowAt(level, entry.getPos());
+                }
+                amount -= sampleOfEntries.size();
+            }
 
-                if (amount <= 0) {
-                    return;
-                }
+            if (amount <= 0) {
+                return;
             }
         }
     }
