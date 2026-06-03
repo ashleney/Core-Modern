@@ -6,7 +6,7 @@ import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
 
-import com.simibubi.create.AllItems;
+import com.simibubi.create.AllTags.AllItemTags;
 import com.simibubi.create.content.decoration.girder.GirderBlock;
 
 import net.createmod.catnip.data.Iterate;
@@ -19,7 +19,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -38,6 +42,11 @@ import su.terrafirmagreg.core.common.data.blocks.TFGBlocks_Girders;
  * Credit: Create: More Girders
  */
 public class TFGGirderWrenchBehavior {
+    private static final TagKey<Item> FORGE_WRENCHES = ItemTags.create(
+            ResourceLocation.fromNamespaceAndPath("forge", "tools/wrenches"));
+    private static final TagKey<Item> C_WRENCHES = ItemTags.create(
+            ResourceLocation.fromNamespaceAndPath("c", "wrenches"));
+
     @OnlyIn(Dist.CLIENT)
     public static void tick() {
         Minecraft mc = Minecraft.getInstance();
@@ -56,7 +65,7 @@ public class TFGGirderWrenchBehavior {
         if (!TFGBlocks_Girders.isAnyGirder(hovered) && !TFGBlocks_Girders.isAnyGirder(hovered))
             return;
 
-        if (!AllItems.WRENCH.isIn(heldItem))
+        if (!isAnyWrench(heldItem))
             return;
 
         Pair<Direction, Action> dirPair = getDirectionAndAction(result, world, pos);
@@ -265,6 +274,10 @@ public class TFGGirderWrenchBehavior {
         if (newState.getValue(GirderBlock.AXIS) != Direction.Axis.Y)
             return newState;
         return newState.setValue(GirderBlock.AXIS, newState.getValue(GirderBlock.X) ? Direction.Axis.X : Direction.Axis.Z);
+    }
+
+    private static boolean isAnyWrench(ItemStack stack) {
+        return AllItemTags.WRENCH.matches(stack) || stack.is(FORGE_WRENCHES) || stack.is(C_WRENCHES);
     }
 
     private enum Action {

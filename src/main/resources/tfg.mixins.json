@@ -52,6 +52,7 @@
         "common.create.BoilerHeatersMixin",
         "common.create.CreatePonderPluginMixin",
         "common.create.DepotBehaviorMixin",
+        "common.create.ValueSettingsInputHandlerMixin",
         "common.create.OpenEndedPipeMixin",
         "common.create.ProcessingRecipeMixin",
         "common.create.RecipeGridHandlerMixin",
